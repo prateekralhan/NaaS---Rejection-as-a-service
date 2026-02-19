@@ -1,0 +1,577 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NaaS · rejection as a service</title>
+    <!-- Tailwind via CDN + custom smooth layers -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Inter font for that clean look -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:opsz@14..32&display=swap" rel="stylesheet">
+    <style>
+        /* neo‑brutalism / soft neomorphism fusion — with light/dark variables */
+        * { font-family: 'Inter', system-ui, sans-serif; }
+        body {
+            background-color: var(--bg-primary);
+            color: var(--text-primary);
+            transition: background-color 0.2s ease, color 0.2s ease;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0;
+            padding: 1.5rem;
+        }
+        :root {
+            --bg-primary: #f0f3f8;
+            --bg-secondary: #eef2f6;
+            --text-primary: #1e1e2f;
+            --text-secondary: #2e3b4e;
+            --card-bg: #eef2f6;
+            --shadow-light: #ffffffb0;
+            --shadow-dark: #c8d0dbb0;
+            --accent: #2b5f8a;
+            --accent-soft: #3b6f9f;
+            --border-soft: #d0d9e4;
+        }
+        .dark {
+            --bg-primary: #1a1e2a;
+            --bg-secondary: #222736;
+            --text-primary: #eaeef5;
+            --text-secondary: #b8c7dd;
+            --card-bg: #222736;
+            --shadow-light: #2d3343b0;
+            --shadow-dark: #0f121cb0;
+            --accent: #70a5d9;
+            --accent-soft: #5887c7;
+            --border-soft: #3a4055;
+        }
+
+        /* neumorphic card with subtle shift on interaction */
+        .neo-card {
+            background: var(--card-bg);
+            border-radius: 3rem;
+            box-shadow:
+                12px 12px 24px var(--shadow-dark),
+                -12px -12px 24px var(--shadow-light);
+            border: 1px solid var(--border-soft);
+            transition: all 0.2s;
+        }
+        .neo-card:active {
+            box-shadow:
+                6px 6px 12px var(--shadow-dark),
+                -6px -6px 12px var(--shadow-light);
+            transform: scale(0.99);
+        }
+
+        /* soft button style */
+        .neo-button {
+            background: var(--card-bg);
+            border: 1px solid var(--border-soft);
+            box-shadow: 4px 4px 8px var(--shadow-dark), -4px -4px 8px var(--shadow-light);
+            transition: 0.15s;
+            color: var(--text-primary);
+            font-weight: 500;
+        }
+        .neo-button:hover:not(:disabled) {
+            box-shadow: 6px 6px 12px var(--shadow-dark), -6px -6px 12px var(--shadow-light);
+            background: color-mix(in srgb, var(--card-bg) 98%, var(--accent));
+        }
+        .neo-button:active:not(:disabled) {
+            box-shadow: inset 4px 4px 8px var(--shadow-dark), inset -4px -4px 8px var(--shadow-light);
+            transform: translateY(2px);
+        }
+
+        /* toggle slider – minimal neomorphism */
+        .toggle-switch {
+            width: 56px;
+            height: 28px;
+            background: var(--bg-secondary);
+            border-radius: 40px;
+            box-shadow: inset 3px 3px 6px var(--shadow-dark), inset -3px -3px 6px var(--shadow-light);
+            cursor: pointer;
+            position: relative;
+            transition: background 0.15s;
+        }
+        .toggle-knob {
+            width: 22px;
+            height: 22px;
+            background: var(--card-bg);
+            border-radius: 50%;
+            position: absolute;
+            top: 3px;
+            left: 4px;
+            box-shadow: 2px 2px 4px var(--shadow-dark), -1px -1px 2px var(--shadow-light);
+            transition: left 0.2s;
+        }
+        .dark .toggle-knob {
+            left: 30px;
+        }
+
+        /* rate limit warning subtle */
+        .rate-message {
+            font-size: 0.8rem;
+            color: var(--text-secondary);
+            border-top: 1px dashed var(--border-soft);
+            padding-top: 0.75rem;
+            margin-top: 0.5rem;
+        }
+
+        #reasonDisplay {
+            min-height: 120px;
+            font-size: 1.3rem;
+            line-height: 1.5;
+            word-break: break-word;
+            background: var(--bg-secondary);
+            border-radius: 2rem;
+            padding: 1.5rem 2rem;
+            box-shadow: inset 4px 4px 8px var(--shadow-dark), inset -4px -4px 8px var(--shadow-light);
+            border: 1px solid var(--border-soft);
+            color: var(--text-primary);
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .footer-link {
+            color: var(--accent);
+            text-decoration: none;
+            border-bottom: 1px dotted var(--accent-soft);
+        }
+        .footer-link:hover {
+            border-bottom: 1px solid var(--accent);
+        }
+        .copy-badge {
+            opacity: 0;
+            transition: opacity 0.2s;
+            background: var(--accent-soft);
+            color: white;
+            font-size: 0.75rem;
+            padding: 0.25rem 0.75rem;
+            border-radius: 40px;
+            pointer-events: none;
+        }
+        .copy-badge.show {
+            opacity: 1;
+        }
+
+        /* fallback indicator */
+        .proxy-badge {
+            font-size: 0.7rem;
+            background: var(--accent-soft);
+            color: white;
+            padding: 0.2rem 0.6rem;
+            border-radius: 20px;
+            opacity: 0.8;
+        }
+
+        /* rate limit warning */
+        .rate-warning {
+            color: #e67e22;
+            font-weight: 500;
+        }
+        .rate-critical {
+            color: #e74c3c;
+            font-weight: 600;
+        }
+    </style>
+</head>
+<body class="items-start sm:items-center">
+    <div class="w-full max-w-3xl">
+        <!-- main card container -->
+        <main class="neo-card p-8 md:p-10 w-full">
+            <!-- header with toggle -->
+            <div class="flex justify-between items-center mb-8">
+                <div>
+                    <h1 class="text-4xl font-light tracking-tight">❌ NaaS</h1>
+                    <p class="text-sm opacity-70 mt-1 tracking-wide">no‑as‑a‑service · polite rejection at scale</p>
+                </div>
+                <!-- light/dark toggle (neomorphism slider) -->
+                <div class="flex items-center gap-3">
+                    <span class="text-sm">🌙</span>
+                    <div class="toggle-switch" id="themeToggle" role="switch" aria-label="switch theme" tabindex="0">
+                        <div class="toggle-knob"></div>
+                    </div>
+                    <span class="text-sm">☀️</span>
+                </div>
+            </div>
+
+            <!-- core interaction area -->
+            <div class="flex flex-col gap-6">
+                <!-- random reason display (neumorphic inset) -->
+                <div id="reasonDisplay" class="select-all">
+                    ⏎ click „say no“ for a fresh rejection
+                </div>
+
+                <!-- button row + tiny rate info -->
+                <div class="flex flex-wrap items-center justify-between gap-4">
+                    <button id="fetchBtn" class="neo-button px-8 py-4 text-xl rounded-full flex items-center gap-3 disabled:opacity-40 disabled:cursor-not-allowed">
+                        <span>🚫</span> say no
+                    </button>
+                    <!-- secondary copy button (needs reason) -->
+                    <button id="copyBtn" class="neo-button px-6 py-3 rounded-full text-sm flex items-center gap-2 disabled:opacity-30" disabled>
+                        📋 copy rejection
+                    </button>
+                </div>
+
+                <!-- rate limit & status area -->
+                <div class="rate-message flex flex-wrap justify-between items-center text-xs sm:text-sm">
+                    <span id="rateStatus">⚡ 120 requests / min · IP based</span>
+                    <span id="remainingHits" class="font-mono">remaining: —</span>
+                </div>
+
+                <!-- proxy status (hidden by default) -->
+                <div id="proxyIndicator" class="text-xs text-right hidden">
+                    <span class="proxy-badge">⚡ using CORS proxy</span>
+                </div>
+
+                <!-- copy feedback toast (hidden until copy) -->
+                <div id="copyToast" class="copy-badge self-end">✓ copied</div>
+
+                <!-- footer credits with link to api/docs -->
+                <div class="pt-6 text-xs flex justify-between items-center border-t border-[var(--border-soft)]">
+                    <span>✨ <a href="https://github.com/hotheadhacker/no-as-a-service" target="_blank" class="footer-link">naas</a> · by hotheadhacker</span>
+                    <span>🔧 Build by <a href="https://github.com/prateekralhan" target="_blank" class="footer-link">Prateek Ralhan</a></span>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script>
+        (function() {
+            // ---------- production‑grade constants & state ----------
+            const PRIMARY_API = 'https://naas.isalman.dev/no';
+            // Fallback CORS proxies (tiered approach)
+            const PROXY_OPTIONS = [
+                // CORS-friendly mirrors/proxies
+                'https://api.allorigins.win/raw?url=' + encodeURIComponent('https://naas.isalman.dev/no'),
+                'https://corsproxy.io/?' + encodeURIComponent('https://naas.isalman.dev/no'),
+                'https://thingproxy.freeboard.io/fetch/' + 'https://naas.isalman.dev/no'
+            ];
+            
+            const RATE_LIMIT_PER_MINUTE = 120;          // API hard limit
+            const CLIENT_WINDOW_MS = 60 * 1000;          // 1 minute sliding
+            const REQUEST_TIMEOUT_MS = 8000;              // 8s timeout (longer for proxies)
+
+            // in‑memory rate limiter (sliding window) - tracks ALL requests
+            let requestTimestamps = [];
+
+            // UI elements
+            const reasonEl = document.getElementById('reasonDisplay');
+            const fetchBtn = document.getElementById('fetchBtn');
+            const copyBtn = document.getElementById('copyBtn');
+            const remainingSpan = document.getElementById('remainingHits');
+            const copyToast = document.getElementById('copyToast');
+            const themeToggle = document.getElementById('themeToggle');
+            const proxyIndicator = document.getElementById('proxyIndicator');
+            const resetRateBtn = document.getElementById('resetRateBtn');
+
+            // current reason store
+            let currentReason = '';
+            let usingProxy = false;
+
+            // Fallback reasons in case everything fails
+            const FALLBACK_REASONS = [
+                "This feels like something Future Me would yell at Present Me for agreeing to.",
+                "My brain said 'maybe' but my calendar laughed.",
+                "I'm currently operating at maximum 'no' capacity.",
+                "That's going to be a 'thanks, but no thanks' from me.",
+                "I've already used up my yearly yes quota.",
+                "My to-do list just gave me the side-eye.",
+                "This sounds like a 'Future Me' problem.",
+                "I'm in a committed relationship with my free time.",
+                "My spirit animal is a 'decline' button.",
+                "I checked with my manager (my cat) and she said no."
+            ];
+
+            // ---------- rate limiter: sliding window (tracks EVERY request attempt) ----------
+            function updateRateLimitInfo() {
+                const now = Date.now();
+                // remove timestamps older than 1 minute
+                requestTimestamps = requestTimestamps.filter(ts => (now - ts) < CLIENT_WINDOW_MS);
+                const used = requestTimestamps.length;
+                const remaining = Math.max(0, RATE_LIMIT_PER_MINUTE - used);
+                
+                // Update display with color coding based on remaining requests
+                remainingSpan.innerText = `remaining: ${remaining}`;
+                
+                // Add color classes based on remaining count
+                remainingSpan.classList.remove('rate-warning', 'rate-critical');
+                if (remaining <= 10) {
+                    remainingSpan.classList.add('rate-critical');
+                } else if (remaining <= 30) {
+                    remainingSpan.classList.add('rate-warning');
+                }
+                
+                return remaining;
+            }
+
+            function canMakeRequest() {
+                const remaining = updateRateLimitInfo();
+                return remaining > 0;
+            }
+
+            // register a request attempt (call for EVERY request, success or failure)
+            function registerRequestAttempt() {
+                requestTimestamps.push(Date.now());
+                updateRateLimitInfo(); // refresh display
+            }
+
+            // ---------- fetch with multiple fallback strategies ----------
+            async function fetchWithFallback(url, timeoutMs, proxyLevel = 0) {
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+                try {
+                    const response = await fetch(url, {
+                        method: 'GET',
+                        headers: { 
+                            'Accept': 'application/json',
+                            'Origin': window.location.origin
+                        },
+                        signal: controller.signal,
+                        cache: 'no-cache',
+                        mode: 'cors'
+                    });
+
+                    clearTimeout(timeoutId);
+                    return response;
+                } catch (error) {
+                    clearTimeout(timeoutId);
+                    throw error;
+                }
+            }
+
+            async function fetchNoReason() {
+                // 1. ALWAYS register the attempt first - rate limit counts ALL requests
+                registerRequestAttempt();
+                
+                // 2. Check if we're still under the limit (but we already registered, so this is just for UX)
+                if (requestTimestamps.length > RATE_LIMIT_PER_MINUTE) {
+                    // We're over the limit, but we still want to show something
+                    console.warn('Rate limit exceeded, but request was counted');
+                }
+
+                let lastError = null;
+                usingProxy = false;
+
+                // Try primary API first
+                try {
+                    console.log('Trying primary API...');
+                    const response = await fetchWithFallback(PRIMARY_API, REQUEST_TIMEOUT_MS);
+                    
+                    if (response.ok) {
+                        const data = await response.json();
+                        if (data && typeof data.reason === 'string') {
+                            proxyIndicator.classList.add('hidden');
+                            return data.reason;
+                        }
+                    }
+                    lastError = new Error(`Primary API returned ${response.status}`);
+                } catch (error) {
+                    console.warn('Primary API failed:', error.message);
+                    lastError = error;
+                }
+
+                // Try proxy options in sequence
+                for (let i = 0; i < PROXY_OPTIONS.length; i++) {
+                    try {
+                        console.log(`Trying proxy ${i + 1}...`);
+                        const proxyUrl = PROXY_OPTIONS[i];
+                        const response = await fetchWithFallback(proxyUrl, REQUEST_TIMEOUT_MS * 1.5);
+                        
+                        if (response.ok) {
+                            let data;
+                            const contentType = response.headers.get('content-type');
+                            
+                            if (contentType && contentType.includes('application/json')) {
+                                data = await response.json();
+                                // Some proxies wrap the response
+                                if (data && data.contents) {
+                                    // allorigins format
+                                    try {
+                                        const parsed = JSON.parse(data.contents);
+                                        if (parsed && parsed.reason) {
+                                            usingProxy = true;
+                                            proxyIndicator.classList.remove('hidden');
+                                            return parsed.reason;
+                                        }
+                                    } catch (e) {
+                                        // Not JSON contents, try as text
+                                        if (typeof data.contents === 'string') {
+                                            usingProxy = true;
+                                            proxyIndicator.classList.remove('hidden');
+                                            return data.contents;
+                                        }
+                                    }
+                                } else if (data && data.reason) {
+                                    // Direct JSON response
+                                    usingProxy = true;
+                                    proxyIndicator.classList.remove('hidden');
+                                    return data.reason;
+                                }
+                            } else {
+                                // Try to parse as text and then JSON
+                                const text = await response.text();
+                                try {
+                                    const jsonData = JSON.parse(text);
+                                    if (jsonData && jsonData.reason) {
+                                        usingProxy = true;
+                                        proxyIndicator.classList.remove('hidden');
+                                        return jsonData.reason;
+                                    }
+                                } catch (e) {
+                                    // Not JSON, use text as reason
+                                    if (text && text.length > 0) {
+                                        usingProxy = true;
+                                        proxyIndicator.classList.remove('hidden');
+                                        return text;
+                                    }
+                                }
+                            }
+                        }
+                    } catch (error) {
+                        console.warn(`Proxy ${i + 1} failed:`, error.message);
+                        lastError = error;
+                    }
+                }
+
+                // If all else fails, use a local fallback reason
+                console.warn('All APIs failed, using fallback');
+                const fallbackReason = FALLBACK_REASONS[Math.floor(Math.random() * FALLBACK_REASONS.length)];
+                return fallbackReason + " (offline fallback)";
+            }
+
+            // ---------- UI updates ----------
+            function setLoading(isLoading) {
+                fetchBtn.disabled = isLoading;
+                if (isLoading) {
+                    fetchBtn.innerHTML = `<span>⏳</span> saying no...`;
+                } else {
+                    fetchBtn.innerHTML = `<span>🚫</span> say no`;
+                }
+            }
+
+            function displayReason(text) {
+                reasonEl.innerText = text;
+                currentReason = text;
+                copyBtn.disabled = !text || text.length === 0 || text.includes('click') || text.includes('error');
+            }
+
+            function showError(message) {
+                if (message.includes('rate_limit')) {
+                    const match = message.match(/rate_limit:(.*)/);
+                    const pretty = match ? match[1] : 'rate limit exceeded';
+                    displayReason(`⚠️ ${pretty}`);
+                } else {
+                    displayReason(`❌ ${message}`);
+                }
+                copyBtn.disabled = true;
+                currentReason = '';
+            }
+
+            async function copyReason() {
+                if (!currentReason || copyBtn.disabled) return;
+
+                try {
+                    await navigator.clipboard.writeText(currentReason);
+                    copyToast.classList.add('show');
+                    setTimeout(() => copyToast.classList.remove('show'), 1500);
+                } catch (err) {
+                    // Fallback
+                    const textarea = document.createElement('textarea');
+                    textarea.value = currentReason;
+                    document.body.appendChild(textarea);
+                    textarea.select();
+                    document.execCommand('copy');
+                    document.body.removeChild(textarea);
+                    copyToast.classList.add('show');
+                    setTimeout(() => copyToast.classList.remove('show'), 1500);
+                }
+            }
+
+            // ---------- fetch handler ----------
+            async function handleFetchClick() {
+                if (fetchBtn.disabled) return;
+
+                setLoading(true);
+                copyBtn.disabled = true;
+
+                try {
+                    const reason = await fetchNoReason();
+                    displayReason(reason);
+                } catch (error) {
+                    console.warn('Fetch error:', error);
+                    showError(error.message);
+                } finally {
+                    setLoading(false);
+                    // Update is already called in registerRequestAttempt
+                }
+            }
+
+            // ---------- theme toggle ----------
+            function initTheme() {
+                const stored = localStorage.getItem('naas-theme');
+                const systemDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+
+                if (stored === 'dark' || (!stored && systemDark)) {
+                    document.documentElement.classList.add('dark');
+                } else {
+                    document.documentElement.classList.remove('dark');
+                }
+            }
+
+            function toggleTheme() {
+                if (document.documentElement.classList.contains('dark')) {
+                    document.documentElement.classList.remove('dark');
+                    localStorage.setItem('naas-theme', 'light');
+                } else {
+                    document.documentElement.classList.add('dark');
+                    localStorage.setItem('naas-theme', 'dark');
+                }
+            }
+
+            // ---------- reset rate limit (for demo purposes) ----------
+            function resetRateLimit() {
+                requestTimestamps = [];
+                updateRateLimitInfo();
+                displayReason('⏎ rate counter reset — try again');
+            }
+
+            // ---------- initial load ----------
+            async function initialFetch() {
+                try {
+                    setLoading(true);
+                    const reason = await fetchNoReason();
+                    displayReason(reason);
+                } catch (err) {
+                    reasonEl.innerText = '⏎ hit „say no“ for your first rejection';
+                } finally {
+                    setLoading(false);
+                }
+            }
+
+            // ---------- attach event listeners ----------
+            fetchBtn.addEventListener('click', handleFetchClick);
+            copyBtn.addEventListener('click', copyReason);
+            themeToggle.addEventListener('click', toggleTheme);
+            resetRateBtn.addEventListener('click', resetRateLimit);
+            
+            themeToggle.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    toggleTheme();
+                }
+            });
+
+            // Update rate info periodically
+            setInterval(updateRateLimitInfo, 1000); // Update every second for accuracy
+
+            // ---------- bootstrap ----------
+            initTheme();
+            initialFetch();
+            updateRateLimitInfo();
+        })();
+    </script>
+</body>
+</html>
